@@ -614,8 +614,15 @@ ${doc.isUntitled ? 'NIL' : util.to_lisp_string(doc.fileName)} ${policy})`;
         const symbol = getSymbol(doc, pos);
         if (!symbol) return;
         const pkg = searchBufferPackage(doc, pos);
-        const cmd = `(CL:IGNORE-ERRORS (SWANK-BACKEND:DESCRIBE-SYMBOL-FOR-EMACS
-(SWANK::PARSE-SYMBOL-OR-LOSE ${util.to_lisp_string(symbol)} SWANK::*BUFFER-PACKAGE*)))`;
+        const cmd = `(CL:IGNORE-ERRORS
+(CL:LET* ((CL:SYMBOL (SWANK::PARSE-SYMBOL-OR-LOSE ${util.to_lisp_string(symbol)} SWANK::*BUFFER-PACKAGE*))
+          (CL:LIST (SWANK-BACKEND:DESCRIBE-SYMBOL-FOR-EMACS CL:SYMBOL)))
+  (CL:IGNORE-ERRORS (CL:SETQ CL:LIST
+    (CL:LIST* :ARGLIST
+              (SWANK::WITH-ARGLIST-IO-SYNTAX
+                (CL:WRITE-TO-STRING (SWANK-BACKEND:ARGLIST CL:SYMBOL)))
+              CL:LIST)))
+  CL:LIST))`;
         const res = convertDescribeSymbol(await this.client.rex(cmd, pkg, 'T'));
         if (res) { return new vscode.Hover(res); }
     }
