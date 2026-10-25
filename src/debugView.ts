@@ -19,7 +19,7 @@ export class DebugView {
         // (simulate Emacs quit-window) ourselves.
         private quitHook: () => void
     ) {
-        this.panel = vscode.window.createWebviewPanel('oliveDebug', `Debugger: Level ${info.level}`, vscode.ViewColumn.Two, {
+        this.panel = vscode.window.createWebviewPanel('oliveDebug', `Debugger: Level ${info.level}`, vscode.ViewColumn.Beside, {
             enableScripts: true,
             localResourceRoots: [
                 vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
