@@ -2,7 +2,7 @@
 
 You need to install a Common Lisp implementation. For new comers, [SBCL](https://www.sbcl.org) is recommended. Other popular implementations include [CCL](https://ccl.clozure.com) and [ECL](https://ecl.common-lisp.dev/). You need to configure `olive.lispCommand` for implementations other than SBCL. It is also recommended (but optional) to install [Quicklisp](https://quicklisp.org) package manager and configure the [Ultralisp](https://ultralisp.org) distribution.
 
-If you clone this repo and want to develop OLIVE yourself, first run `npm install && npm run fetch-slime` to get dependencies, then `npm run bundle` builds the extension. Then use VSCode to open the `olive` directory and you should be `F5` to run it in an attached extension host.
+If you clone this repo and want to develop OLIVE yourself, first run `npm install && npm run fetch-slime` to get dependencies, then use VSCode to open the `olive` directory and you should be `F5` to run it in an attached extension host.
 
 ## REPL and Debugger
 
