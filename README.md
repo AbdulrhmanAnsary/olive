@@ -20,10 +20,36 @@ OLIVE automatically starts a Lisp process when it is activated, this behavior ca
 
 This is one of the essential and unique feature of Lisp environments. The built-in structural editing functionalities of OLIVE aims to support basic operations first. If you wish to use another structural editing plugin, you can disable it with the `olive.structuralEditing` configuration. The key bindings are generally similiar to other Paredit ports on VSCode. What is currently implemented:
 
-- Navigation: Backward Sexp (`Ctrl+Left` win/linux `Alt+Left` mac), Forward Sexp (`Ctrl/Alt+Right`), Forward Down Sexp (`Ctrl+Down`), Backward Up Sexp (`Ctrl+Up`), Forward Up Sexp (`Ctrl+Alt+Down`).
+- Navigation:
+
+|                   | Win             | Linux           | Mac             |
+|-------------------|-----------------|-----------------|-----------------|
+| Backward Sexp     | `Ctrl+Left`     | `Ctrl+Left`     | `Alt+Left`      |
+| Forward Sexp      | `Ctrl+Right`    | `Ctrl+Right`    | `Alt+Right`     |
+| Forward Down Sexp | `Ctrl+Down`     | `Ctrl+Down`     | `Ctrl+Down`     |
+| Backward Up Sexp  | `Ctrl+Up`       | `Ctrl+Up`       | `Ctrl+Up`       |
+| Forward Up Sexp   | `Ctrl+Alt+Down` | `Ctrl+Alt+Down` | `Ctrl+Alt+Down` |
+
 - Selection: When holding down `Shift`, the navigation commands become selection commands that move selection.
+
 - Strict Mode: Enabled by default, configure via `olive.strictMode`.
-- Editing: Slurp Forward (`Ctrl+Alt+Right` win/mac `Ctrl+Alt+.` linux), Barf Forward (`Ctrl+Alt+Left` win/mac `Ctrl+Alt+,` linux), Slurp Backward (`Ctrl+Alt+Shift+Left`), Barf Backward (`Ctrl+Alt+Shift+Right`), Splice Sexp (`Ctrl+Alt+S`), Split Sexp (`Ctrl+Shift+S`), Wrap `()` Around (`Ctrl+Alt+P`), Raise Sexp (`Ctrl+Alt+R`), Forward Kill Sexp (`Ctrl+Delete` win/linux `Alt+Delete` mac), Backward Kill Sexp (`Ctrl/Alt+Backspace`), Forward Splice Kill (`Ctrl+Alt+Shift+Delete`), Backward Splice Kill (`Ctrl+Alt+Shift+Backspace`).
+
+- Editing:
+
+|                      | Win                        | Linux                      | Mac                        |
+|----------------------|----------------------------|----------------------------|----------------------------|
+| Slurp Forward        | `Ctrl+Alt+Right`           | `Ctrl+Alt+.`               | `Ctrl+Alt+Right`           |
+| Barf Forward         | `Ctrl+Alt+Left`            | `Ctrl+Alt+,`               | `Ctrl+Alt+Left`            |
+| Slurp Backward       | `Ctrl+Alt+Shift+Left`      | `Ctrl+Alt+Shift+Left`      | `Ctrl+Alt+Shift+Left`      |
+| Barf Backward        | `Ctrl+Alt+Shift+Right`     | `Ctrl+Alt+Shift+Right`     | `Ctrl+Alt+Shift+Right`     |
+| Splice Sexp          | `Ctrl+Alt+S`               | `Ctrl+Alt+S`               | `Ctrl+Alt+S`               |
+| Split Sexp           | `Ctrl+Shift+S`             | `Ctrl+Shift+S`             | `Ctrl+Shift+S`             |
+| Wrap `()` around     | `Ctrl+Alt+P`               | `Ctrl+Alt+P`               | `Ctrl+Alt+P`               |
+| Raise Sexp           | `Ctrl+Alt+R`               | `Ctrl+Alt+R`               | `Ctrl+Alt+R`               |
+| Forward Kill Sexp    | `Ctrl+Delete`              | `Ctrl+Delete`              | `Alt+Delete`               |
+| Backward Kill Sexp   | `Ctrl+Backspace`           | `Ctrl+Backspace`           | `Alt+Backspace`            |
+| Forward Splice Kill  | `Ctrl+Alt+Shift+Delete`    | `Ctrl+Alt+Shift+Delete`    | `Ctrl+Alt+Shift+Delete`    |
+| Backward Splice Kill | `Ctrl+Alt+Shift+Backspace` | `Ctrl+Alt+Shift+Backspace` | `Ctrl+Alt+Shift+Backspace` |
 
 ## Loading Files and Systems
 
