@@ -6,7 +6,7 @@ const content = document.getElementById('content');
 const completionList = document.getElementById('completion-list');
 
 let currentInput = undefined, completions = [], selectedIndex = -1;
-let lastRequestId = 0, isReading = false;
+let lastRequestId = 0, isReading = false, currentReadRequestId;
 
 let history = [];
 let historyIndex = -1;
@@ -42,7 +42,12 @@ window.onmessage = e => {
             currentPackage = m.package;
             setLastPrompt(m.package);
             break;
-        case 'read':      createNewInput('', true); break;
+        case 'read':      createNewInput('', true, m.requestId); break;
+        case 'readCancelled':
+            if (isReading && currentReadRequestId === m.requestId && currentInput) {
+                currentInput.disabled = true;
+            }
+            break;
         case 'autocompleteResults': showCompletions(m.completions, m.requestId); break;
         case 'settings':  settings = m; break;
         case 'flush': flushOutput(); break;
@@ -117,19 +122,22 @@ function flushOutput() {
     }
 }
 
-function createNewInput(pkg, readMode) {
+function createNewInput(pkg, readMode, requestId) {
     if (currentInput) currentInput.disabled = true;
 
     isReading = readMode;
+    currentReadRequestId = readMode ? requestId : undefined;
     const line = document.createElement('div');
     line.className = 'line';
 
-    if (!readMode) {
-        const prompt = document.createElement('div');
-        prompt.className = 'prompt';
+    const prompt = document.createElement('div');
+    prompt.className = 'prompt';
+    if (readMode) {
+        prompt.textContent = 'Input> ';
+    } else {
         prompt.innerHTML = `<span class="pkg">${pkg}</span>> `;
-        line.appendChild(prompt);
     }
+    line.appendChild(prompt);
 
     currentInput = document.createElement('textarea');
     currentInput.className = 'input';
@@ -163,7 +171,11 @@ function handleKeyDown(e) {
                 history.unshift(text);
                 if (history.length > 100) history.pop();
             }
-            vscode.postMessage({ command: isReading ? 'readSubmit' : 'eval', text });
+            vscode.postMessage({
+                command: isReading ? 'readSubmit' : 'eval',
+                text,
+                requestId: isReading ? currentReadRequestId : undefined
+            });
         } else if (!isReading) {
             e.preventDefault();
             const offset = currentInput.selectionStart;

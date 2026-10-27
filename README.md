@@ -27,7 +27,7 @@ This is one of the essential and unique feature of Lisp environments. The built-
 
 ## Loading Files and Systems
 
-The play button (also key `F5`) on the top right of the editor window compiles and loads the current file. This compiles with default settings, which has good performance and is already debuggable. More options are available in the drop down menu next to it: High debug settings (also key `Shift+F5`), if you hate some compiler optimizations (variable elimination, stack frame elision...); Load directly (also key `Alt+F5`), this one is equivalent to entering forms in the file into REPL one by one, generally more useful for scripting.
+The play button (also key `F5`) on the top right of the editor window compiles and loads the current file. This compiles with default settings, which has good performance and is already debuggable. More options are available in the drop down menu next to it: High debug settings (also key `Shift+F5`), if you hate some compiler optimizations (variable elimination, stack frame elision...); Load directly (also key `Alt+F5`), this one is equivalent to entering forms in the file into REPL one by one, generally more useful for scripting. Runtime forms in either loading mode can request interactive input; answer in the REPL, and OLIVE restores its normal prompt when loading finishes.
 
 ![File Demo](demo/file.gif)
 

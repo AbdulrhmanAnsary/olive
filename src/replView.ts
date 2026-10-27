@@ -4,10 +4,22 @@ import * as indent from './indent';
 import { convertLocation } from './subr';
 const { util } = require('swank-client');
 
+interface ReadRequest {
+    id: number;
+    tag: string;
+    resolve: (text: string) => void;
+    cancelled: boolean;
+    submitted: boolean;
+}
+
 export class ReplView implements vscode.WebviewViewProvider {
     public static readonly viewType = 'olive.replView';
     private view?: vscode.WebviewView;
-    private readResolver?: (text: string) => void;
+    private readRequests = new Map<string, ReadRequest>();
+    private readQueue: ReadRequest[] = [];
+    private activeRead?: ReadRequest;
+    private nextReadId = 0;
+    private readPromptNeedsRestore = false;
     private getSymbolResolver?: (symbol: string) => void;
     private client: any;
     private readyResolve?: () => void;
@@ -32,6 +44,7 @@ export class ReplView implements vscode.WebviewViewProvider {
     }
 
     public setClient(client: any, info: any) {
+        if (this.client !== client) this.cancelReadRequests();
         this.client = client;
         if (client){
             this.currentPackage = util.from_lisp_string(info.children[0]);
@@ -46,10 +59,28 @@ export class ReplView implements vscode.WebviewViewProvider {
                 this.currentNickname = n;
                 this.post('setPrompt', { package: this.currentNickname });
             });
-            this.client.on('read_string', () => {
-                this.post('read');
-                return new Promise<string>(r => this.readResolver = r);
+            this.client.on('read_string', (tag: string) => this.requestRead(tag));
+            this.client.on('read_aborted', (tag: string) => {
+                if (this.client === client) this.abortRead(tag);
             });
+            this.client.read_string_handler = (sexp: any) => {
+                if (this.client !== client || !client.is_connected()) return Promise.resolve();
+                const thread = sexp.children[1].source;
+                const tag = sexp.children[2].source;
+                const response = Promise.resolve(client.on_handlers.read_string(tag));
+                const request = this.readRequests.get(tag);
+                return response.then((text: string) => {
+                    if (request && !request.cancelled && this.client === client &&
+                        client.is_connected()) {
+                        client.send_message(
+                            `(:EMACS-RETURN-STRING ${thread} ${tag} ${util.to_lisp_string(text)})`
+                        );
+                    }
+                    if (request && this.readRequests.get(tag) === request) {
+                        this.readRequests.delete(tag);
+                    }
+                });
+            };
 
             const encouragements = [
                 "Let the hacking commence!",
@@ -106,7 +137,16 @@ export class ReplView implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage((m) => {
             switch (m.command) {
                 case 'eval':         this.evaluate(m.text); break;
-                case 'readSubmit':   this.readResolver?.(m.text + '\n'); break;
+                case 'readSubmit': {
+                    const request = this.activeRead;
+                    if (request && request.id === m.requestId && !request.submitted) {
+                        request.submitted = true;
+                        this.activeRead = undefined;
+                        request.resolve(m.text + '\n');
+                        this.activateNextRead();
+                    }
+                    break;
+                }
                 case 'autocomplete': this.autocomplete(m.text, m.requestId); break;
                 case 'interrupt':    this.client?.interrupt(); break;
                 case 'unthrottle':   this.client?.socket.resume(); break;
@@ -151,7 +191,70 @@ export class ReplView implements vscode.WebviewViewProvider {
         } finally {
             vscode.commands.executeCommand('setContext', 'olive.isEvaluating', false);
         }
+        this.restorePrompt();
+    }
+
+    public restorePromptAfterRead() {
+        if (this.readPromptNeedsRestore) this.restorePrompt();
+    }
+
+    private restorePrompt() {
+        if (this.readRequests.size > 0) return;
+        this.readPromptNeedsRestore = false;
         this.post('prompt', { package: this.currentNickname });
+    }
+
+    private requestRead(tag: string): Promise<string> {
+        if (this.readRequests.has(tag)) this.abortRead(tag);
+        this.readPromptNeedsRestore = true;
+        return new Promise(resolve => {
+            const request: ReadRequest = {
+                id: ++this.nextReadId,
+                tag,
+                resolve,
+                cancelled: false,
+                submitted: false
+            };
+            this.readRequests.set(tag, request);
+            this.readQueue.push(request);
+            this.activateNextRead();
+        });
+    }
+
+    private activateNextRead() {
+        if (this.activeRead) return;
+        while (this.readQueue.length > 0) {
+            const request = this.readQueue.shift()!;
+            if (request.cancelled || request.submitted) continue;
+            this.activeRead = request;
+            this.post('read', { requestId: request.id });
+            return;
+        }
+    }
+
+    private abortRead(tag: string) {
+        const request = this.readRequests.get(tag);
+        if (!request || request.submitted) return;
+        request.cancelled = true;
+        this.readRequests.delete(tag);
+        this.readQueue = this.readQueue.filter(queued => queued !== request);
+        if (this.activeRead === request) {
+            this.activeRead = undefined;
+            this.post('readCancelled', { requestId: request.id });
+            this.activateNextRead();
+        }
+        request.resolve('');
+    }
+
+    private cancelReadRequests() {
+        for (const request of this.readRequests.values()) {
+            request.cancelled = true;
+            request.resolve('');
+        }
+        this.readRequests.clear();
+        this.readQueue = [];
+        this.activeRead = undefined;
+        this.readPromptNeedsRestore = false;
     }
 
     private async autocomplete(text: string, requestId: string) {

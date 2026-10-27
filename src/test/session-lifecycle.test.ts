@@ -99,7 +99,8 @@ describe('Compile and load error reporting', () => {
         const replProvider = {
             focus: false,
             setClient() {},
-            sendSystemSpecs() {}
+            sendSystemSpecs() {},
+            restorePromptAfterRead() {}
         } as unknown as ReplView;
         const context = {
             extensionPath: '',
@@ -167,7 +168,8 @@ describe('Compile and load error reporting', () => {
         const replProvider = {
             focus: false,
             setClient() {},
-            sendSystemSpecs() {}
+            sendSystemSpecs() {},
+            restorePromptAfterRead() {}
         } as unknown as ReplView;
         const context = {
             extensionPath: '',
@@ -231,7 +233,8 @@ describe('Compile and load error reporting', () => {
         const replProvider = {
             focus: false,
             setClient() {},
-            sendSystemSpecs() {}
+            sendSystemSpecs() {},
+            restorePromptAfterRead() {}
         } as unknown as ReplView;
         const context = {
             extensionPath: '',

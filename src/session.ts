@@ -15,6 +15,13 @@ interface LispResult {
     source: string;
 }
 
+interface FileLoadOperation {
+    client: any;
+    disconnected: boolean;
+    disconnectedPromise: Promise<void>;
+    notifyDisconnected: () => void;
+}
+
 function loadResultText(result: LispResult): string {
     return result.type === 'string' ? util.from_lisp_string(result) : result.source;
 }
@@ -42,6 +49,7 @@ export class LispSession implements vscode.DocumentFormattingEditProvider, vscod
     private lispPort: number | undefined;
     private lispClient: { process: cp.ChildProcess; client: any } | undefined;
     private lispOutputChannel: vscode.OutputChannel | undefined;
+    private fileLoadOperation?: FileLoadOperation;
     private statusBarItem: vscode.StatusBarItem;
     private debugViews = new Map<string, DebugView>();
     public diagnostics: vscode.DiagnosticCollection;
@@ -416,6 +424,11 @@ export class LispSession implements vscode.DocumentFormattingEditProvider, vscod
     private clearClient(client: any) {
         if (!client || this.client !== client) return;
 
+        const operation = this.fileLoadOperation;
+        if (operation && operation.client === client && !operation.disconnected) {
+            operation.disconnected = true;
+            operation.notifyDisconnected();
+        }
         if (this.lispClient?.client === client) this.lispClient = undefined;
         this.clientReady = false;
         this.client = undefined;
@@ -513,119 +526,167 @@ export class LispSession implements vscode.DocumentFormattingEditProvider, vscod
     }
 
     public async compileFile(editor: vscode.TextEditor, edit: vscode.TextEditorEdit, policy: string = 'NIL') {
-        if (!this.checkClient()) return;
-
-        const doc = editor.document;
-        if (doc.isDirty) await doc.save();
-
-        const fileName = doc.fileName;
-        const fileTitle = path.basename(fileName);
-        let res;
+        const operation = this.beginFileLoad();
+        if (!operation) return;
 
         try {
-            res = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Compiling ${fileTitle}...`,
-                cancellable: false
-            }, async () => {
-                const cmd = `(SWANK:COMPILE-FILE-FOR-EMACS
+            const doc = editor.document;
+            if (doc.isDirty) await doc.save();
+
+            const fileName = doc.fileName;
+            const fileTitle = path.basename(fileName);
+            let res;
+
+            try {
+                res = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Compiling ${fileTitle}...`,
+                    cancellable: false
+                }, async () => {
+                    const cmd = `(SWANK:COMPILE-FILE-FOR-EMACS
 (UIOP:PARSE-NATIVE-NAMESTRING ${util.to_lisp_string(fileName)}) T :POLICY ${policy})`;
 
-                return await this.client.rex(cmd, 'COMMON-LISP-USER', 'T');
-            });
-        } catch (err) {
-            vscode.window.showErrorMessage(
-                `Failed to compile ${fileTitle}: ${err instanceof Error ? err.message : err}`
-            );
-            return;
-        }
-
-        this.reportCompilationResult(doc, res);
-
-        if (res.type !== 'list') return;
-
-        const success = util.from_lisp_bool(res.children[2]);
-        const faslfile = util.from_lisp_bool(res.children[5]) &&
-            util.from_lisp_string(res.children[5]);
-
-        if (!faslfile) return;
-
-        if (!success &&
-            await vscode.window.showInformationMessage(
-                'Compilation failed. Load fasl file anyway?',
-                { modal: true },
-                'Load'
-            ) !== 'Load') {
-            return;
-        }
-
-        try {
-            const loadRes = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Loading ${fileTitle}...`,
-                cancellable: false
-            }, async () => {
-                return await this.client.rex(
-                    `(SWANK:LOAD-FILE ${util.to_lisp_string(faslfile)})`,
-                    'COMMON-LISP-USER',
-                    'T'
-                );
-            });
-
-            const loadSuccess = loadSucceeded(loadRes);
-
-            if (!loadSuccess) {
-                const detail = loadResultText(loadRes);
+                    return await this.fileLoadRex(operation, cmd);
+                });
+            } catch (err) {
                 vscode.window.showErrorMessage(
-                    `Compilation ${success ? 'succeeded' : 'failed'}, but loading ${fileTitle} failed: ${detail}`
+                    `Failed to compile ${fileTitle}: ${err instanceof Error ? err.message : err}`
                 );
                 return;
             }
-            vscode.window.showInformationMessage(
-                success
-                    ? `Compiled and loaded ${fileTitle}.`
-                    : `Loaded ${fileTitle} FASL despite compilation failure.`
-            );
-        } catch (err) {
-            vscode.window.showErrorMessage(
-                `Compilation ${success ? 'succeeded' : 'failed'}, but loading ${fileTitle} failed: ${err instanceof Error ? err.message : err}`
-            );
+
+            this.reportCompilationResult(doc, res);
+
+            if (res.type !== 'list') return;
+
+            const success = util.from_lisp_bool(res.children[2]);
+            const faslfile = util.from_lisp_bool(res.children[5]) &&
+                util.from_lisp_string(res.children[5]);
+
+            if (!faslfile) return;
+
+            if (!success &&
+                await vscode.window.showInformationMessage(
+                    'Compilation failed. Load fasl file anyway?',
+                    { modal: true },
+                    'Load'
+                ) !== 'Load') {
+                return;
+            }
+
+            try {
+                const loadRes = await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Loading ${fileTitle}...`,
+                    cancellable: false
+                }, async () => {
+                    return await this.fileLoadRex(
+                        operation,
+                        `(SWANK:LOAD-FILE ${util.to_lisp_string(faslfile)})`
+                    );
+                });
+
+                const loadSuccess = loadSucceeded(loadRes);
+
+                if (!loadSuccess) {
+                    const detail = loadResultText(loadRes);
+                    vscode.window.showErrorMessage(
+                        `Compilation ${success ? 'succeeded' : 'failed'}, but loading ${fileTitle} failed: ${detail}`
+                    );
+                    return;
+                }
+                vscode.window.showInformationMessage(
+                    success
+                        ? `Compiled and loaded ${fileTitle}.`
+                        : `Loaded ${fileTitle} FASL despite compilation failure.`
+                );
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    `Compilation ${success ? 'succeeded' : 'failed'}, but loading ${fileTitle} failed: ${err instanceof Error ? err.message : err}`
+                );
+            }
+        } finally {
+            this.replProvider.restorePromptAfterRead();
+            this.endFileLoad(operation);
         }
     }
 
     public async loadFile(editor: vscode.TextEditor, edit: vscode.TextEditorEdit) {
-        if (!this.checkClient()) return;
+        const operation = this.beginFileLoad();
+        if (!operation) return;
 
-        const doc = editor.document;
-        if (doc.isDirty) await doc.save();
+        try {
+            const doc = editor.document;
+            if (doc.isDirty) await doc.save();
 
-        const fileName = doc.fileName;
-        const fileTitle = path.basename(fileName);
+            const fileName = doc.fileName;
+            const fileTitle = path.basename(fileName);
 
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: `Loading ${fileTitle}...`,
-            cancellable: false
-        }, async () => {
             try {
-                const cmd = `(SWANK:LOAD-FILE
+                await vscode.window.withProgress({
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Loading ${fileTitle}...`,
+                    cancellable: false
+                }, async () => {
+                    try {
+                        const cmd = `(SWANK:LOAD-FILE
 (UIOP:PARSE-NATIVE-NAMESTRING ${util.to_lisp_string(fileName)}))`;
 
-                const loadRes = await this.client.rex(cmd, 'COMMON-LISP-USER', 'T');
-                const loadSuccess = loadSucceeded(loadRes);
+                        const loadRes = await this.fileLoadRex(operation, cmd);
+                        const loadSuccess = loadSucceeded(loadRes);
 
-                if (loadSuccess) {
-                    vscode.window.showInformationMessage(`Loaded ${fileTitle}.`);
-                } else {
-                    const detail = loadResultText(loadRes);
-                    vscode.window.showErrorMessage(`Loading ${fileTitle} failed: ${detail}`);
-                }
-            } catch (err) {
-                vscode.window.showErrorMessage(
-                    `Loading ${fileTitle} failed: ${err instanceof Error ? err.message : err}`
-                );
+                        if (loadSuccess) {
+                            vscode.window.showInformationMessage(`Loaded ${fileTitle}.`);
+                        } else {
+                            const detail = loadResultText(loadRes);
+                            vscode.window.showErrorMessage(`Loading ${fileTitle} failed: ${detail}`);
+                        }
+                    } catch (err) {
+                        vscode.window.showErrorMessage(
+                            `Loading ${fileTitle} failed: ${err instanceof Error ? err.message : err}`
+                        );
+                    }
+                });
+            } finally {
+                this.replProvider.restorePromptAfterRead();
             }
+        } finally {
+            this.endFileLoad(operation);
+        }
+    }
+
+    private beginFileLoad(): FileLoadOperation | undefined {
+        if (!this.checkClient()) return;
+        if (this.fileLoadOperation) {
+            vscode.window.showWarningMessage('A file load operation is already in progress.');
+            return;
+        }
+
+        let notifyDisconnected!: () => void;
+        const disconnectedPromise = new Promise<void>(resolve => notifyDisconnected = resolve);
+        const operation: FileLoadOperation = {
+            client: this.client,
+            disconnected: false,
+            disconnectedPromise,
+            notifyDisconnected
+        };
+        this.fileLoadOperation = operation;
+        return operation;
+    }
+
+    private endFileLoad(operation: FileLoadOperation) {
+        if (this.fileLoadOperation === operation) this.fileLoadOperation = undefined;
+    }
+
+    private fileLoadRex(operation: FileLoadOperation, command: string): Promise<any> {
+        if (operation.disconnected) return Promise.reject(new Error('Disconnected from the Swank server.'));
+        const disconnected = operation.disconnectedPromise.then(() => {
+            throw new Error('Disconnected from the Swank server.');
         });
+        return Promise.race([
+            operation.client.rex(command, 'COMMON-LISP-USER', 'T'),
+            disconnected
+        ]);
     }
 
     async compileRegion(doc: vscode.TextDocument, range: vscode.Range, policy: string = 'NIL') {
